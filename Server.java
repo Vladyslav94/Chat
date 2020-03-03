@@ -50,7 +50,24 @@ public class Server {
 
         @Override
         public void run() {
-            super.run();
+            ConsoleHelper.writeMessage("Connection established with " + socket.getRemoteSocketAddress());
+            String userName = null;
+
+            try (Connection connection = new Connection(socket)) {
+                userName = serverHandshake(connection);
+                sendBroadcastMessage(new Message(MessageType.USER_ADDED, userName));
+                notifyUsers(connection, userName);
+                serverMainLoop(connection, userName);
+                connectionMap.remove(userName);
+                sendBroadcastMessage(new Message(MessageType.USER_REMOVED, userName));
+                ConsoleHelper.writeMessage("Connection is cosed!");
+
+            } catch (IOException | ClassNotFoundException e) {
+                ConsoleHelper.writeMessage("Error");
+            }
+
+
+
         }
 
         private String serverHandshake(Connection connection) throws IOException, ClassNotFoundException {
@@ -78,9 +95,9 @@ public class Server {
         }
 
         private void serverMainLoop(Connection connection, String userName) throws IOException, ClassNotFoundException {
-            while (true){
+            while (true) {
                 Message message = connection.receive();
-                if(message.getType() == MessageType.TEXT){
+                if (message.getType() == MessageType.TEXT) {
                     String text = message.getData();
                     Server.sendBroadcastMessage(new Message(MessageType.TEXT, userName + ": " + text));
                 } else {
@@ -88,5 +105,6 @@ public class Server {
                 }
             }
         }
+
     }
 }
