@@ -5,9 +5,8 @@ import com.javarush.task.task30.task3008.ConsoleHelper;
 import com.javarush.task.task30.task3008.Message;
 import com.javarush.task.task30.task3008.MessageType;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.net.Socket;
 
 public class Client {
     protected Connection connection;
@@ -19,7 +18,69 @@ public class Client {
     }
 
     public class SocketThread extends Thread {
+        protected void processIncomingMessage(String message) {
+            ConsoleHelper.writeMessage(message);
+        }
 
+        protected void informAboutAddingNewUser(String userName) {
+            ConsoleHelper.writeMessage(userName + " присоединился к чату");
+        }
+
+        protected void informAboutDeletingNewUser(String userName) {
+            ConsoleHelper.writeMessage(userName + " покинул чат");
+        }
+
+        protected void notifyConnectionStatusChanged(boolean clientConnected) {
+            synchronized (Client.this) {
+                Client.this.clientConnected = clientConnected;
+                Client.this.notify();
+            }
+        }
+
+        protected void clientHandshake() throws IOException, ClassNotFoundException {
+            while (true) {
+                MessageType messageType = connection.receive().getType();
+                String userName = getUserName();
+                if (MessageType.NAME_REQUEST.equals(messageType)) {
+                    connection.send(new Message(MessageType.USER_NAME, userName));
+                } else if (MessageType.NAME_ACCEPTED.equals(messageType)) {
+                    notifyConnectionStatusChanged(true);
+                    break;
+                } else
+                    throw new IOException("Unexpected MessageType");
+
+            }
+        }
+
+        protected void clientMainLoop() throws IOException, ClassNotFoundException {
+            while (true) {
+                Message message = connection.receive();
+                if (MessageType.TEXT.equals(message.getType())) {
+                    processIncomingMessage(message.getData());
+                } else if (MessageType.USER_ADDED.equals(message.getType())) {
+                    informAboutAddingNewUser(message.getData());
+                } else if (MessageType.USER_REMOVED.equals(message.getType())) {
+                    informAboutDeletingNewUser(message.getData());
+                } else
+                    throw new IOException("Unexpected MessageType");
+            }
+        }
+
+        public void run(){
+            String serverAddress = getServerAddress();
+            int serverPort = getServerPort();
+            Socket socket = null;
+            try {
+                socket = new Socket(serverAddress, serverPort);
+                connection = new Connection(socket);
+                clientHandshake();
+                clientMainLoop();
+
+            } catch (IOException | ClassNotFoundException e) {
+                notifyConnectionStatusChanged(false);
+            }
+
+        }
     }
 
     protected String getServerAddress() {
@@ -62,7 +123,6 @@ public class Client {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-
         if (shouldSendTextFromConsole()) {
             if (clientConnected) {
                 sendTextMessage("Соединение установлено.\nДля выхода наберите команду 'exit'.");
@@ -70,7 +130,6 @@ public class Client {
                 ConsoleHelper.writeMessage("Произошла ошибка во время работы клиента.");
             }
         }
-
 
         while (clientConnected) {
             String string = ConsoleHelper.readString();
@@ -81,7 +140,5 @@ public class Client {
                 sendTextMessage(string);
             }
         }
-
-
     }
 }
